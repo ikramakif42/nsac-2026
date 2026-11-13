@@ -4,6 +4,10 @@ import type {
   ObservationRecord,
   QualityReport,
   CompareResult,
+  TileQuery,
+  TileResponse,
+  TimeCubeMetadata,
+  CubeAxis,
 } from "../types/cids";
 
 /** All backend connectors must implement this interface */
@@ -15,6 +19,8 @@ export interface IConnector {
   fetchSpectrum(recordId: string): Promise<{ wavelengths: number[]; flux: number[]; variance: number[] }>;
   fetchQuality(recordId: string): Promise<QualityReport>;
   compare(recordIds: string[]): Promise<CompareResult>;
+  fetchTiles(query: TileQuery): Promise<TileResponse>;
+  fetchCube(recordId: string, axis: CubeAxis): Promise<TimeCubeMetadata>;
 }
 
 /** Connector registry */
@@ -33,4 +39,3 @@ export function getConnector(id: string): IConnector {
 export function listConnectors(): IConnector[] {
   return Array.from(registry.values());
 }
-

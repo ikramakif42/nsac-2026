@@ -1,7 +1,7 @@
 # ORBIT-LENS — Test Suite & Sanity Check Report
 
 ## Executive Summary
-This document records the automated sanity checks and test suite verification for the ORBIT-LENS foundation scaffold. All tests execute independently for the frontend and backend, validating the CIDS contracts, science mathematical functions, playback safety boundaries, and API interfaces.
+This document records the automated sanity checks and test suite verification for ORBIT-LENS, including the 6-detector focal plane calibration, progressive 5-degree FOV tile index, wheel temporal scrubbing, and 3D time-cube endpoints.
 
 ---
 
@@ -9,10 +9,10 @@ This document records the automated sanity checks and test suite verification fo
 
 | Scope | Suite | Tests Run | Passed | Failed | Execution Time |
 |---|---|---|---|---|---|
-| **Backend** | `pytest` | 7 | 7 | 0 | ~1.9s |
-| **Frontend** | `vitest` | 4 | 4 | 0 | ~0.3s |
-| **TypeScript / Bundler** | `tsc && vite build` | 1 | 1 | 0 | ~0.15s |
-| **Total** | | **12** | **12** | **0** | **~2.4s** |
+| **Backend** | `pytest` | 9 | 9 | 0 | ~1.8s |
+| **Frontend** | `vitest` | 7 | 7 | 0 | ~0.3s |
+| **TypeScript / Bundler** | `tsc && vite build` | 1 | 1 | 0 | ~1.1s |
+| **Total** | | **17** | **17** | **0** | **~3.2s** |
 
 ---
 
@@ -22,12 +22,12 @@ This document records the automated sanity checks and test suite verification fo
 
 1. **`test_health_check`**
    - **Endpoint:** `GET /health`
-   - **Verification:** Verifies server is online, returns HTTP 200, status is `"ok"`, and current release is `"qr3"`.
+   - **Verification:** Verifies server returns status `"ok"`, release `"qr3"`, `"arrays": 6`, and `"spectral_channels": 102`.
    - **Result:** `PASSED`
 
-2. **`test_synthetic_search`**
+2. **`test_synthetic_search_6_arrays`**
    - **Endpoint:** `POST /search` with `source="synthetic"`
-   - **Verification:** Verifies synthetic query returns CIDS-compliant `SearchResult` with populated `ObservationRecord` list, `wcs` parameters, and source tag `"synthetic"`.
+   - **Verification:** Returns 24 multi-epoch records across all 6 physical detector arrays (`Array1` through `Array6`).
    - **Result:** `PASSED`
 
 3. **`test_qr3_search_phase1_gate`**
@@ -35,32 +35,35 @@ This document records the automated sanity checks and test suite verification fo
    - **Verification:** Enforces that unintegrated real archive requests return HTTP 503 rather than silently falling back to synthetic test data.
    - **Result:** `PASSED`
 
-4. **`test_wcs_transforms`**
+4. **`test_tiles_endpoint`**
+   - **Endpoint:** `POST /tiles`
+   - **Verification:** Returns 5.0-degree active FOV chunk with directionally biased prefetch neighbor chunks along velocity vector $(\Delta \text{RA}, \Delta \text{Dec})$.
+   - **Result:** `PASSED`
+
+5. **`test_cube_endpoint`**
+   - **Endpoint:** `GET /cube`
+   - **Verification:** Validates dual-axis slicing metadata for `axis="time"` (6 temporal slices) and `axis="wavelength"` (102 spectral channels).
+   - **Result:** `PASSED`
+
+6. **`test_wcs_transforms`**
    - **Module:** `app.science.wcs_engine`
-   - **Verification:** Validates Astropy WCS-TAN projection forward transform (pixel to sky RA/Dec) and reverse transform (sky to pixel coordinates) within $10^{-4}$ pixel tolerance.
+   - **Verification:** Astropy TAN projection forward and reverse transforms within $10^{-4}$ pixel tolerance.
    - **Result:** `PASSED`
 
-5. **`test_snr_computation`**
+7. **`test_snr_computation`**
    - **Module:** `app.science.fits_engine`
-   - **Verification:** Verifies median Signal-to-Noise Ratio formula $\text{SNR} = \frac{\text{Science}}{\sqrt{\text{Variance}}}$ with known synthetic inputs ($100 / \sqrt{25} = 20.0$).
+   - **Verification:** Formula $\text{SNR} = \frac{\text{Science}}{\sqrt{\text{Variance}}}$ matches known input.
    - **Result:** `PASSED`
 
-6. **`test_quality_flag_decoding`**
+8. **`test_quality_flag_decoding`**
    - **Module:** `app.science.fits_engine`
-   - **Verification:** Tests bitwise decoding of HDU 3 quality bitmasks (e.g., bit 0 for `BAD_PIXEL`, bit 2 for `COSMIC_RAY`).
+   - **Verification:** Bitwise decoding of HDU 3 quality bitmasks.
    - **Result:** `PASSED`
 
-7. **`test_lvf_model`**
+9. **`test_6_array_lvf_model`**
    - **Module:** `app.science.lvf_model`
-   - **Verification:** Validates linear variable filter (LVF) wavelength mapping across detector rows (0.75 μm to 1.10 μm for SW1) and 100-point full channel spectral sampling.
+   - **Verification:** Validates all 6 physical detector arrays (Array 1–6), exact 102-point continuous spectral axis ($0.75 - 5.00\ \mu\text{m}$), and wavelength-to-array mapping.
    - **Result:** `PASSED`
-
-### How to Run Backend Tests
-```bash
-cd backend
-.\.venv\Scripts\activate
-pytest -v
-```
 
 ---
 
@@ -69,51 +72,29 @@ pytest -v
 ### Test Cases
 
 1. **`enforces playback safety defaults`**
-   - **Target:** Zustand `useStore` playback state.
-   - **Verification:** Playback strictly initializes with `isPlaying: false`, `fps: 0.5`, and `epochIndex: 0` to prevent user photosensitivity issues.
+   - **Verification:** Playback initializes paused (`isPlaying: false`), default speed is 0.5 fps, default FOV is 5.0 degrees.
    - **Result:** `PASSED`
 
 2. **`caps playback speed strictly at 3.0 Hz`**
-   - **Target:** `setFps` action.
-   - **Verification:** Restricts frame rates exceeding 3.0 Hz (e.g. attempting to set 10.0 fps caps to 3.0 fps; setting 0.01 fps floors to 0.1 fps).
+   - **Verification:** Enforces photosensitivity safety ceiling at 3.0 Hz.
    - **Result:** `PASSED`
 
-3. **`contains all 5 NASA challenge benchmark targets`**
-   - **Target:** `BENCHMARK_TARGETS` preset registry.
-   - **Verification:** Confirms presence of Barnard's Star, Epsilon Indi B, WISE 0855, RW Aurigae, and R Draconis with verified celestial coordinates.
+3. **`performs smooth wheel scrubbing through epochs`**
+   - **Verification:** `stepEpoch` smoothly steps forward/backward with boundary clamping across multi-epoch stacks.
    - **Result:** `PASSED`
 
-4. **`retrieves deterministic synthetic search records`**
-   - **Target:** `syntheticConnector.search`.
-   - **Verification:** Verifies synthetic connector returns 8 multi-epoch observations with warning banner and `source_used: "synthetic"`.
+4. **`contains all 5 NASA challenge benchmark targets`**
+   - **Verification:** Confirms Barnard's Star, Epsilon Indi B, WISE 0855, RW Aurigae, and R Draconis.
    - **Result:** `PASSED`
 
-### How to Run Frontend Tests & Build
-```bash
-cd frontend
-# Run unit tests
-npm test
+5. **`retrieves synthetic observations across all 6 detector arrays`**
+   - **Verification:** Synthetic query yields 24 records spanning `Array1` through `Array6`.
+   - **Result:** `PASSED`
 
-# Run TypeScript compilation and production bundle check
-npm run build
-```
+6. **`calculates 5-degree active and prefetch tiles`**
+   - **Verification:** Validates tile ID generation and 5-degree bounding boxes.
+   - **Result:** `PASSED`
 
----
-
-## 4. End-to-End Sanity Check Protocol
-
-When starting development or validating an environment:
-
-1. **Start Backend Server:**
-   ```bash
-   cd backend
-   .\.venv\Scripts\python.exe -m uvicorn app.main:app --reload --port 8000
-   ```
-   Open `http://localhost:8000/health` in your browser. Expected response: `{"status":"ok","release":"qr3"}`.
-
-2. **Start Frontend Server:**
-   ```bash
-   cd frontend
-   npm run dev
-   ```
-   Open `http://localhost:5173/explore` in your browser. Verify the coordinate inputs and benchmark preset buttons respond immediately.
+7. **`retrieves 3D Time-Cube metadata`**
+   - **Verification:** Returns 3D datacube dimensions and slice metadata.
+   - **Result:** `PASSED`

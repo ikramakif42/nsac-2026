@@ -1,5 +1,15 @@
 import type { IConnector } from "./index";
-import type { SearchQuery, SearchResult, ObservationRecord, QualityReport, CompareResult } from "../types/cids";
+import type {
+  SearchQuery,
+  SearchResult,
+  ObservationRecord,
+  QualityReport,
+  CompareResult,
+  TileQuery,
+  TileResponse,
+  TimeCubeMetadata,
+  CubeAxis,
+} from "../types/cids";
 import { registerConnector } from "./index";
 
 const BASE = import.meta.env.VITE_API_URL ?? "http://localhost:8000";
@@ -53,8 +63,21 @@ const qr3Connector: IConnector = {
       body: JSON.stringify({ record_ids: recordIds }),
     });
   },
+
+  fetchTiles(query: TileQuery): Promise<TileResponse> {
+    return apiFetch<TileResponse>("/tiles", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(query),
+    });
+  },
+
+  fetchCube(recordId: string, axis: CubeAxis): Promise<TimeCubeMetadata> {
+    return apiFetch<TimeCubeMetadata>(
+      `/cube?record_id=${encodeURIComponent(recordId)}&axis=${axis}&source=qr3`
+    );
+  },
 };
 
 registerConnector(qr3Connector);
 export default qr3Connector;
-

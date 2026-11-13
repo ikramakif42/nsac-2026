@@ -12,6 +12,8 @@ export default defineConfig({
       "/spectrum": { target: "http://localhost:8000", changeOrigin: true },
       "/quality":  { target: "http://localhost:8000", changeOrigin: true },
       "/compare":  { target: "http://localhost:8000", changeOrigin: true },
+      "/tiles":    { target: "http://localhost:8000", changeOrigin: true },
+      "/cube":     { target: "http://localhost:8000", changeOrigin: true },
     },
   },
   build: {

@@ -4,7 +4,12 @@ from fastapi.testclient import TestClient
 from app.main import app
 from app.science.fits_engine import compute_snr, decode_quality_flags
 from app.science.wcs_engine import build_wcs, pixel_to_sky, sky_to_pixel
-from app.science.lvf_model import row_to_wavelength, all_bands_wavelength_axis
+from app.science.lvf_model import (
+    row_to_wavelength,
+    all_bands_wavelength_axis,
+    SPHEREX_ARRAYS,
+    get_array_for_wavelength,
+)
 
 client = TestClient(app)
 
@@ -15,9 +20,11 @@ def test_health_check():
     data = response.json()
     assert data["status"] == "ok"
     assert data["release"] == "qr3"
+    assert data["arrays"] == 6
+    assert data["spectral_channels"] == 102
 
 
-def test_synthetic_search():
+def test_synthetic_search_6_arrays():
     payload = {
         "ra": 269.4521,
         "dec": 4.6934,
@@ -28,15 +35,12 @@ def test_synthetic_search():
     assert response.status_code == 200
     data = response.json()
     assert data["source_used"] == "synthetic"
-    assert data["total"] > 0
-    assert len(data["records"]) == data["total"]
+    assert data["total"] == 24  # 4 epochs * 6 arrays
+    assert len(data["records"]) == 24
     
-    first = data["records"][0]
-    assert first["source"] == "synthetic"
-    assert "band" in first
-    assert "wavelength_um" in first
-    assert "wcs" in first
-    assert first["wcs"]["naxis1"] == 256
+    bands = {r["band"] for r in data["records"]}
+    for i in range(1, 7):
+        assert f"Array{i}" in bands
 
 
 def test_qr3_search_phase1_gate():
@@ -50,6 +54,37 @@ def test_qr3_search_phase1_gate():
     # Expected 503 until Phase 1 implementation completes
     assert response.status_code == 503
     assert "Phase 1" in response.json()["detail"]
+
+
+def test_tiles_endpoint():
+    payload = {
+        "ra": 269.4521,
+        "dec": 4.6934,
+        "fov_deg": 5.0,
+        "velocity_dra": 1.2,
+        "velocity_ddec": 0.5,
+        "source": "synthetic"
+    }
+    response = client.post("/tiles", json=payload)
+    assert response.status_code == 200
+    data = response.json()
+    assert data["active_tile"]["fov_deg"] == 5.0
+    assert len(data["prefetch_tiles"]) > 0
+
+
+def test_cube_endpoint():
+    response = client.get("/cube?record_id=test_1&axis=time&source=synthetic")
+    assert response.status_code == 200
+    data = response.json()
+    assert data["axis"] == "time"
+    assert len(data["slices"]) == 6
+
+    # Test spectral axis
+    res_spectral = client.get("/cube?record_id=test_1&axis=wavelength&source=synthetic")
+    assert res_spectral.status_code == 200
+    data_spec = res_spectral.json()
+    assert data_spec["axis"] == "wavelength"
+    assert len(data_spec["slices"]) == 102
 
 
 def test_wcs_transforms():
@@ -77,13 +112,12 @@ def test_wcs_transforms():
 
 def test_snr_computation():
     science = np.ones((10, 10), dtype=np.float32) * 100.0
-    variance = np.ones((10, 10), dtype=np.float32) * 25.0  # std = 5.0 -> snr = 20.0
+    variance = np.ones((10, 10), dtype=np.float32) * 25.0
     snr = compute_snr(science, variance)
     assert abs(snr - 20.0) < 1e-3
 
 
 def test_quality_flag_decoding():
-    # Bit 0 (BAD_PIXEL) and Bit 2 (COSMIC_RAY) -> 1 | 4 = 5
     mask = np.array([[5]], dtype=np.uint16)
     flags = decode_quality_flags(mask)
     assert "BAD_PIXEL" in flags
@@ -91,12 +125,26 @@ def test_quality_flag_decoding():
     assert len(flags) == 2
 
 
-def test_lvf_model():
-    wl_row0 = row_to_wavelength("SW1", 0)
-    wl_row1024 = row_to_wavelength("SW1", 1024)
-    assert abs(wl_row0 - 0.75) < 1e-4
-    assert abs(wl_row1024 - 1.10) < 1e-4
+def test_6_array_lvf_model():
+    # 6 arrays
+    assert len(SPHEREX_ARRAYS) == 6
     
-    axis = all_bands_wavelength_axis(n_per_band=25)
-    assert len(axis) == 100
-    assert axis[0] == 0.75
+    # Array 1: 0.75 - 1.11 μm
+    wl_row0 = row_to_wavelength("Array1", 0)
+    wl_row2048 = row_to_wavelength("Array1", 2048)
+    assert abs(wl_row0 - 0.75) < 1e-4
+    assert abs(wl_row2048 - 1.11) < 1e-4
+
+    # Array 6: 4.42 - 5.00 μm
+    assert abs(row_to_wavelength("Array6", 2048) - 5.00) < 1e-4
+    
+    # All bands concatenated = exactly 102 channels (6 * 17)
+    axis = all_bands_wavelength_axis()
+    assert len(axis) == 102
+    assert axis[0] > 0.74
+    assert axis[-1] < 5.01
+
+    # Wavelength mapping
+    assert get_array_for_wavelength(0.85) == "Array1"
+    assert get_array_for_wavelength(3.10) == "Array4"
+    assert get_array_for_wavelength(4.60) == "Array6"

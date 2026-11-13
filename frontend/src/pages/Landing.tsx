@@ -9,8 +9,8 @@ export default function Landing() {
   const setQuery  = useStore((s) => s.setQuery);
 
   const handleBenchmark = (ra: number, dec: number) => {
-    setQuery({ ra, dec, radius_arcsec: 30 });
-    navigate(`/explore?ra=${ra}&dec=${dec}`);
+    setQuery({ ra, dec, radius_arcsec: 9000, source: "synthetic" });
+    navigate(`/explore?ra=${ra}&dec=${dec}&source=synthetic&fov=5.0`);
   };
 
   return (
@@ -31,7 +31,7 @@ export default function Landing() {
         </p>
 
         <Link
-          to="/explore"
+          to="/explore?source=synthetic"
           className="flex items-center gap-2 px-6 py-3 rounded-lg bg-[var(--ol-accent)] text-[var(--ol-bg)] font-semibold hover:opacity-90 transition-opacity"
         >
           Open Explorer <ArrowRight size={18} aria-hidden />

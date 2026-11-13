@@ -18,3 +18,4 @@ async def get_cube(
     if connector is None:
         raise HTTPException(status_code=503, detail=f"Connector '{source}' not available")
     return await connector.fetch_cube(record_id, axis)
+

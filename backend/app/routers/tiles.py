@@ -15,3 +15,4 @@ async def get_tiles(query: TileQuery) -> TileResponse:
     if connector is None:
         raise HTTPException(status_code=503, detail=f"Connector '{source_id}' not available")
     return await connector.fetch_tiles(query)
+

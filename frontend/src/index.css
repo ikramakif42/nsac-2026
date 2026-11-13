@@ -1,0 +1,57 @@
+@import "tailwindcss";
+
+/* ── ORBIT-LENS Design Tokens ─────────────────────────────────────────── */
+:root {
+  --ol-bg:        #0b1020;
+  --ol-surface:   #141d2e;
+  --ol-surface2:  #1c2840;
+  --ol-border:    #2a3a52;
+  --ol-text:      #e2e8f0;
+  --ol-muted:     #64748b;
+
+  /* Accent palette */
+  --ol-accent:    #67e8f9;   /* cyan  — QR3/real data badge */
+  --ol-warning:   #fcd34d;   /* amber — synthetic data badge */
+  --ol-danger:    #fda4af;   /* rose  — error/fail */
+  --ol-success:   #86efac;   /* green — quality pass */
+  --ol-lavender:  #c4b5fd;   /* MAST badge */
+  --ol-focus:     #facc15;   /* keyboard focus ring */
+
+  /* Typography */
+  --ol-font-mono: "JetBrains Mono", "Fira Code", ui-monospace, monospace;
+  --ol-font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
+
+  /* Spacing / radius */
+  --ol-radius-sm: 4px;
+  --ol-radius:    8px;
+  --ol-radius-lg: 12px;
+}
+
+/* ── Base Reset ───────────────────────────────────────────────────────── */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+html, body, #root {
+  height: 100%;
+  background: var(--ol-bg);
+  color: var(--ol-text);
+  font-family: var(--ol-font-sans);
+  -webkit-font-smoothing: antialiased;
+}
+
+/* ── Scrollbar ────────────────────────────────────────────────────────── */
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: var(--ol-surface); }
+::-webkit-scrollbar-thumb { background: var(--ol-border); border-radius: 3px; }
+
+/* ── Focus ring ───────────────────────────────────────────────────────── */
+:focus-visible {
+  outline: 2px solid var(--ol-focus);
+  outline-offset: 2px;
+}
+
+/* ── Source badge colours ─────────────────────────────────────────────── */
+.badge-qr3       { color: var(--ol-bg); background: var(--ol-accent); }
+.badge-synthetic { color: var(--ol-bg); background: var(--ol-warning); }
+.badge-mast      { color: var(--ol-bg); background: var(--ol-lavender); }
+.badge-vizier    { color: var(--ol-bg); background: var(--ol-muted); }
+

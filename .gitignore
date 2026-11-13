@@ -1,0 +1,30 @@
+# Logs & temp
+*.log
+*.tmp
+.DS_Store
+
+# Node / Frontend
+node_modules/
+dist/
+dist-ssr/
+*.local
+
+# Python / Backend
+__pycache__/
+*.py[cod]
+*$py.class
+.venv/
+env/
+venv/
+*.egg-info/
+.pytest_cache/
+
+# Environment files
+.env
+.env.local
+
+# FITS cache / data
+cache/
+data/
+downloads/
+

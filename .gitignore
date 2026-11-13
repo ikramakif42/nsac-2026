@@ -28,3 +28,8 @@ cache/
 data/
 downloads/
 
+# Astra folder
+astra/
+/astra/
+
+

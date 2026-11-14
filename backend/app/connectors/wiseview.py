@@ -121,7 +121,7 @@ class WiseViewConnector(BaseConnector):
                             cdelt1=-0.000763889, # 2.75 arcsec/pixel
                             cdelt2=0.000763889,
                         ),
-                        fits_url=f"http://byw.tools/wiseview#ra={query.ra}&dec={query.dec}&size=150&band=3",
+                        fits_url=f"https://byw.tools/wiseview#ra={query.ra}&dec={query.dec}&size=150&band=3",
                         snr=round(snr_val, 1),
                         quality_flags=0,
                         quality_ok=True,

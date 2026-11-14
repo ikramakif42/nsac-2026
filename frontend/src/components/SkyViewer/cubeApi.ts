@@ -4,6 +4,7 @@ import type {
   CubeRenderResponse,
 } from "../../types/cubeRender";
 import type { CubeAxis, DataSource } from "../../types/cids";
+import { getSyntheticRenderFrame } from "./syntheticRenderFrame";
 
 const MAX_REQUEST_BYTES = 48 * 1024 * 1024;
 const MAX_FITS_BYTES = 32 * 1024 * 1024;
@@ -81,6 +82,39 @@ async function prepareFrame(
     };
   }
 
+  // If no raw FITS bytes are loaded and this is synthetic/WiseView/Gaia or a catalog link:
+  if (
+    record.source === "synthetic" ||
+    record.source === "wiseview" ||
+    record.source === "gaia" ||
+    !record.fits_url?.toLowerCase().includes(".fits")
+  ) {
+    const rf = getSyntheticRenderFrame(record, 0, [record]);
+    return {
+      record: metadata,
+      hdus: {
+        science: rf.intensity,
+        variance: rf.intensity.map((v) => Math.max(1e-4, v * 0.1)),
+        mask: new Array(rf.intensity.length).fill(0),
+        header: {
+          SIMPLE: true,
+          BITPIX: -32,
+          NAXIS: 2,
+          NAXIS1: 128,
+          NAXIS2: 128,
+          CRVAL1: record.ra_center,
+          CRVAL2: record.dec_center,
+          CRPIX1: 64.0,
+          CRPIX2: 64.0,
+          CDELT1: record.wcs.cdelt1,
+          CDELT2: record.wcs.cdelt2,
+          CTYPE1: "RA---TAN",
+          CTYPE2: "DEC--TAN",
+        },
+      },
+    };
+  }
+
   if (!record.fits_url) {
     throw new Error(`Observation ${record.id} has neither loaded HDUs nor a FITS URL.`);
   }
@@ -89,7 +123,11 @@ async function prepareFrame(
     throw new Error("Only HTTP(S) FITS URLs are supported.");
   }
   if (url.origin !== window.location.origin && url.protocol !== "https:") {
-    throw new Error("Remote FITS downloads must use HTTPS.");
+    if (url.protocol === "http:") {
+      url.protocol = "https:";
+    } else {
+      throw new Error("Remote FITS downloads must use HTTPS.");
+    }
   }
 
   const response = await fetch(url, {

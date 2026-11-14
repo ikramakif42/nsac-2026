@@ -1,15 +1,10 @@
-// Phase 6: Three.js data cube viewer (lazy-loaded)
 import type { ObservationRecord } from "../../types/cids";
+import Scientific3DViewer from "./Scientific3DViewer";
 
-interface Props { records: ObservationRecord[]; }
-
-export default function CubeViewer({ records: _ }: Props) {
-  return (
-    <div className="flex items-center justify-center h-full text-[var(--ol-muted)] text-sm flex-col gap-2">
-      <span className="text-3xl">🧊</span>
-      <span>3D Data Cube Viewer — Phase 6</span>
-      <span className="text-xs opacity-60">Three.js instanced geometry</span>
-    </div>
-  );
+interface Props {
+  records: ObservationRecord[];
 }
 
+export default function CubeViewer({ records }: Props) {
+  return <Scientific3DViewer records={records} mode="cube" />;
+}

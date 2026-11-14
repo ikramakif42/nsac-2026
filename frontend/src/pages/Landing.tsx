@@ -9,8 +9,8 @@ export default function Landing() {
   const setQuery  = useStore((s) => s.setQuery);
 
   const handleBenchmark = (ra: number, dec: number) => {
-    setQuery({ ra, dec, radius_arcsec: 9000, source: "synthetic" });
-    navigate(`/explore?ra=${ra}&dec=${dec}&source=synthetic&fov=5.0`);
+    setQuery({ ra, dec, radius_arcsec: 9000, source: "qr3" });
+    navigate(`/explore?ra=${ra}&dec=${dec}&source=qr3&fov=5.0`);
   };
 
   return (
@@ -30,12 +30,20 @@ export default function Landing() {
           and time-domain phenomena across 102 photometric bands.
         </p>
 
-        <Link
-          to="/explore?source=synthetic"
-          className="flex items-center gap-2 px-6 py-3 rounded-lg bg-[var(--ol-accent)] text-[var(--ol-bg)] font-semibold hover:opacity-90 transition-opacity"
-        >
-          Open Explorer <ArrowRight size={18} aria-hidden />
-        </Link>
+        <div className="flex flex-wrap items-center justify-center gap-4">
+          <Link
+            to="/explore"
+            className="flex items-center gap-2 px-6 py-3 rounded-lg bg-[var(--ol-accent)] text-[var(--ol-bg)] font-semibold hover:opacity-90 transition-opacity"
+          >
+            Open Live IRSA Explorer <ArrowRight size={18} aria-hidden />
+          </Link>
+          <Link
+            to="/demo"
+            className="flex items-center gap-2 px-5 py-3 rounded-lg border border-[var(--ol-border)] text-[var(--ol-text)] hover:border-[var(--ol-accent)] hover:text-[var(--ol-accent)] transition-colors font-mono text-sm"
+          >
+            <span>Try 6-Array Demo Mode</span>
+          </Link>
+        </div>
 
         {/* Benchmark quick-launch */}
         <div className="mt-4">

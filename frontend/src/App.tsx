@@ -9,6 +9,8 @@ import Privacy from "./pages/Privacy";
 // Register connectors
 import "./connectors/qr3";
 import "./connectors/synthetic";
+import "./connectors/wiseview";
+import "./connectors/gaia";
 
 const queryClient = new QueryClient({
   defaultOptions: { queries: { retry: 1, staleTime: 5 * 60_000 } },
@@ -21,6 +23,7 @@ export default function App() {
         <Routes>
           <Route path="/"            element={<Landing />} />
           <Route path="/explore"     element={<Explore />} />
+          <Route path="/demo"        element={<Explore defaultSource="synthetic" />} />
           <Route path="/about"       element={<About />} />
           <Route path="/methodology" element={<Methodology />} />
           <Route path="/terms"       element={<Terms />} />

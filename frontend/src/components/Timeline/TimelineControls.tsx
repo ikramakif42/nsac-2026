@@ -1,87 +1,93 @@
-import { Play, Pause, SkipBack, SkipForward, ChevronFirst, ChevronLast } from "lucide-react";
-import { useStore } from "../../store/useStore";
+import { useEffect } from "react";
+import { useStore, normalizeFps } from "../../store/useStore";
+import { boundEpoch } from "../../lib/exploreState";
 
 interface Props {
   totalFrames: number;
 }
 
-const FPS_OPTIONS = [0.1, 0.25, 0.5, 1.0, 2.0, 3.0];
+const FPS_OPTIONS = [0.1, 0.25, 0.5, 1, 2, 3];
 
 export default function TimelineControls({ totalFrames }: Props) {
-  const { epochIndex, isPlaying, fps, setEpochIndex, setPlaying, setFps } = useStore((s) => ({
-    epochIndex:    s.playback.epochIndex,
-    isPlaying:     s.playback.isPlaying,
-    fps:           s.playback.fps,
-    setEpochIndex: s.setEpochIndex,
-    setPlaying:    s.setPlaying,
-    setFps:        s.setFps,
-  }));
+  const epoch = useStore((s) => s.playback.epochIndex);
+  const playing = useStore((s) => s.playback.isPlaying);
+  const fps = useStore((s) => s.playback.fps);
+  const count = Number.isFinite(totalFrames)
+    ? Math.max(0, Math.trunc(totalFrames))
+    : 0;
+  const index = boundEpoch(epoch, count);
 
-  const canPrev = epochIndex > 0;
-  const canNext = epochIndex < totalFrames - 1;
+  useEffect(() => {
+    if (count < 2) useStore.getState().setPlaying(false);
+  }, [count]);
 
-  const togglePlay = () => {
-    // If at last frame, pressing play rewinds first
-    if (!isPlaying && epochIndex >= totalFrames - 1) {
-      setEpochIndex(0);
-    }
-    setPlaying(!isPlaying);
+  const seek = (next: number) => {
+    const state = useStore.getState();
+    state.setPlaying(false);
+    state.setEpochIndex(boundEpoch(next, count));
   };
+
+  const buttonClass =
+    "rounded border border-slate-600 px-2 py-1 text-slate-100 disabled:opacity-40 focus-visible:outline focus-visible:outline-2 focus-visible:outline-cyan-300";
 
   return (
     <div
-      className="flex items-center gap-3 px-4 py-2 bg-[var(--ol-surface)] border-t border-[var(--ol-border)]"
-      role="toolbar"
+      role="group"
       aria-label="Epoch playback controls"
+      className="flex flex-wrap items-center gap-2 border-t border-slate-700 bg-slate-950 p-2 text-xs"
     >
-      {/* Frame counter */}
-      <span className="font-mono text-xs text-[var(--ol-muted)] w-20 shrink-0">
-        {totalFrames === 0 ? "—" : `${epochIndex + 1} / ${totalFrames}`}
+      <span className="text-slate-100">
+        {count ? `Frame ${index + 1} / ${count}` : "No frames"}
       </span>
-
-      {/* Transport buttons */}
-      <button onClick={() => setEpochIndex(0)} disabled={!canPrev} aria-label="First frame" className="ctrl-btn">
-        <ChevronFirst size={16} />
+      <button type="button" className={buttonClass} disabled={index === 0} onClick={() => seek(0)} aria-label="First frame">
+        First
       </button>
-      <button onClick={() => setEpochIndex(epochIndex - 1)} disabled={!canPrev} aria-label="Previous frame" className="ctrl-btn">
-        <SkipBack size={16} />
+      <button type="button" className={buttonClass} disabled={index === 0} onClick={() => seek(index - 1)} aria-label="Previous frame">
+        Previous
       </button>
-      <button onClick={togglePlay} aria-label={isPlaying ? "Pause" : "Play"} className="ctrl-btn text-[var(--ol-accent)]">
-        {isPlaying ? <Pause size={18} /> : <Play size={18} />}
+      <button
+        type="button"
+        className={buttonClass}
+        disabled={count < 2}
+        aria-pressed={playing}
+        aria-label={playing ? "Pause" : "Play"}
+        onClick={() => {
+          const state = useStore.getState();
+          if (!playing && index === count - 1) state.setEpochIndex(0);
+          state.setPlaying(!playing);
+        }}
+      >
+        {playing ? "Pause" : "Play"}
       </button>
-      <button onClick={() => setEpochIndex(epochIndex + 1)} disabled={!canNext} aria-label="Next frame" className="ctrl-btn">
-        <SkipForward size={16} />
+      <button type="button" className={buttonClass} disabled={index >= count - 1} onClick={() => seek(index + 1)} aria-label="Next frame">
+        Next
       </button>
-      <button onClick={() => setEpochIndex(totalFrames - 1)} disabled={!canNext} aria-label="Last frame" className="ctrl-btn">
-        <ChevronLast size={16} />
+      <button type="button" className={buttonClass} disabled={index >= count - 1} onClick={() => seek(count - 1)} aria-label="Last frame">
+        Last
       </button>
-
-      {/* Scrubber */}
       <input
         type="range"
         min={0}
-        max={Math.max(0, totalFrames - 1)}
-        value={epochIndex}
-        onChange={(e) => { setPlaying(false); setEpochIndex(Number(e.target.value)); }}
-        className="flex-1 accent-[var(--ol-accent)]"
+        max={Math.max(0, count - 1)}
+        value={index}
+        disabled={count < 2}
+        onChange={(e) => seek(Number(e.target.value))}
         aria-label="Epoch scrubber"
+        className="min-w-24 flex-1 accent-cyan-300"
       />
-
-      {/* Speed selector */}
-      <label className="flex items-center gap-1 text-xs text-[var(--ol-muted)] shrink-0">
-        <span>Speed</span>
+      <label className="flex items-center gap-2 text-slate-100">
+        FPS
         <select
-          value={fps}
-          onChange={(e) => setFps(Number(e.target.value))}
-          className="bg-[var(--ol-surface2)] border border-[var(--ol-border)] rounded px-1 py-0.5 text-xs font-mono text-[var(--ol-text)]"
           aria-label="Playback speed (frames per second)"
+          value={normalizeFps(fps)}
+          onChange={(e) => useStore.getState().setFps(Number(e.target.value))}
+          className="rounded border border-slate-600 bg-slate-950 p-1"
         >
-          {FPS_OPTIONS.map((v) => (
-            <option key={v} value={v}>{v} fps</option>
-          ))}
+          {[...new Set([...FPS_OPTIONS, normalizeFps(fps)])]
+            .sort((a, b) => a - b)
+            .map((value) => <option key={value} value={value}>{value}</option>)}
         </select>
       </label>
     </div>
   );
 }
-

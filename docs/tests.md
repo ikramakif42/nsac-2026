@@ -1,100 +1,133 @@
-# ORBIT-LENS — Test Suite & Sanity Check Report
+# ORBIT-LENS — Test evidence and verification plan
 
-## Executive Summary
-This document records the automated sanity checks and test suite verification for ORBIT-LENS, including the 6-detector focal plane calibration, progressive 5-degree FOV tile index, wheel temporal scrubbing, and 3D time-cube endpoints.
+## Evidence status
 
----
+This document distinguishes supplied execution logs from verification that
+still needs to be performed. No new test execution accompanies this revision.
 
-## 1. Test Summary Matrix
+The supplied backend summary says “9 tests,” but its terminal output ends
+with `50 passed in 2.13s`. Nine is the number of documented sanity cases,
+not the total backend suite count.
 
-| Scope | Suite | Tests Run | Passed | Failed | Execution Time |
-|---|---|---|---|---|---|
-| **Backend** | `pytest` | 9 | 9 | 0 | ~1.8s |
-| **Frontend** | `vitest` | 7 | 7 | 0 | ~0.3s |
-| **TypeScript / Bundler** | `tsc && vite build` | 1 | 1 | 0 | ~1.1s |
-| **Total** | | **17** | **17** | **0** | **~3.2s** |
+| Scope | Supplied evidence | Status |
+| --- | --- | --- |
+| Backend pytest | 50 passed in 2.13 s | Reported passing |
+| Frontend Vitest | 1 file, 7 tests passed; duration 323 ms | Reported passing |
+| TypeScript / production build | No current output supplied | Not verified |
+| Browser accessibility automation | No output supplied | Not verified |
+| Keyboard and screen-reader review | No evidence supplied | Not verified |
+| Rendered contrast and flashing assessment | No evidence supplied | Not verified |
+| Recorded demo and caption review | No artifact supplied | Not verified |
 
----
+Do not combine these historical results into a new release certification.
 
-## 2. Backend Test Specifications (`backend/tests/test_sanity.py`)
+## Regression commands
 
-### Test Cases
+Run from the repository root:
 
-1. **`test_health_check`**
-   - **Endpoint:** `GET /health`
-   - **Verification:** Verifies server returns status `"ok"`, release `"qr3"`, `"arrays": 6`, and `"spectral_channels": 102`.
-   - **Result:** `PASSED`
+    cd backend
+    python -m pytest
+    cd ../frontend
+    npm run test -- --run
+    npm run build
 
-2. **`test_synthetic_search_6_arrays`**
-   - **Endpoint:** `POST /search` with `source="synthetic"`
-   - **Verification:** Returns 24 multi-epoch records across all 6 physical detector arrays (`Array1` through `Array6`).
-   - **Result:** `PASSED`
+Record the commit, operating system, runtime versions, full commands, exit
+codes, and output with the release evidence.
 
-3. **`test_qr3_search_phase1_gate`**
-   - **Endpoint:** `POST /search` with `source="qr3"`
-   - **Verification:** Enforces that unintegrated real archive requests return HTTP 503 rather than silently falling back to synthetic test data.
-   - **Result:** `PASSED`
+## Existing coverage described by supplied material
 
-4. **`test_tiles_endpoint`**
-   - **Endpoint:** `POST /tiles`
-   - **Verification:** Returns 5.0-degree active FOV chunk with directionally biased prefetch neighbor chunks along velocity vector $(\Delta \text{RA}, \Delta \text{Dec})$.
-   - **Result:** `PASSED`
+### Backend
 
-5. **`test_cube_endpoint`**
-   - **Endpoint:** `GET /cube`
-   - **Verification:** Validates dual-axis slicing metadata for `axis="time"` (6 temporal slices) and `axis="wavelength"` (102 spectral channels).
-   - **Result:** `PASSED`
+The supplied test descriptions and terminal excerpt cover:
 
-6. **`test_wcs_transforms`**
-   - **Module:** `app.science.wcs_engine`
-   - **Verification:** Astropy TAN projection forward and reverse transforms within $10^{-4}$ pixel tolerance.
-   - **Result:** `PASSED`
+- Health metadata and the six-array / 102-channel model.
+- Explicit synthetic search results.
+- Archive gate behavior without synthetic fallback.
+- Tile and cube endpoints.
+- Backend WCS-TAN transformations.
+- SNR computation and quality-bit decoding.
+- Render-product handling of invalid pixels and constant planes.
+- Rejection of incompatible reference registration, photometry, or spectra.
+- No-overlap, invalid-percentile, and partial-reference errors.
 
-7. **`test_snr_computation`**
-   - **Module:** `app.science.fits_engine`
-   - **Verification:** Formula $\text{SNR} = \frac{\text{Science}}{\sqrt{\text{Variance}}}$ matches known input.
-   - **Result:** `PASSED`
+A passing gate test does not demonstrate successful live archive access.
+Inspect fixtures and mocks before describing a test as an integration test.
 
-8. **`test_quality_flag_decoding`**
-   - **Module:** `app.science.fits_engine`
-   - **Verification:** Bitwise decoding of HDU 3 quality bitmasks.
-   - **Result:** `PASSED`
+### Frontend
 
-9. **`test_6_array_lvf_model`**
-   - **Module:** `app.science.lvf_model`
-   - **Verification:** Validates all 6 physical detector arrays (Array 1–6), exact 102-point continuous spectral axis ($0.75 - 5.00\ \mu\text{m}$), and wavelength-to-array mapping.
-   - **Result:** `PASSED`
+The supplied seven store tests describe:
 
----
+- Paused initialization, 0.5 fps default, and 5-degree default field of view.
+- A 3.0 Hz playback-speed cap.
+- Epoch stepping with boundary clamping.
+- Five benchmark target entries.
+- Synthetic results across six arrays.
+- Active and prefetch tile metadata.
+- Time-cube metadata.
 
-## 3. Frontend Test Specifications (`frontend/src/__tests__/store.test.ts`)
+Store tests alone do not prove actual canvas timing, keyboard accessibility,
+rendered source labels, or successful live network retrieval.
 
-### Test Cases
+## Required M7 automated regression cases
 
-1. **`enforces playback safety defaults`**
-   - **Verification:** Playback initializes paused (`isPlaying: false`), default speed is 0.5 fps, default FOV is 5.0 degrees.
-   - **Result:** `PASSED`
+Add these against the actual store and components; they are requirements,
+not claims of existing coverage.
 
-2. **`caps playback speed strictly at 3.0 Hz`**
-   - **Verification:** Enforces photosensitivity safety ceiling at 3.0 Hz.
-   - **Result:** `PASSED`
+### Playback
 
-3. **`performs smooth wheel scrubbing through epochs`**
-   - **Verification:** `stepEpoch` smoothly steps forward/backward with boundary clamping across multi-epoch stacks.
-   - **Result:** `PASSED`
+- New sessions, URL hydration, and persisted-state hydration start paused.
+- Default speed is 0.5 fps.
+- Every speed mutation path enforces the 3.0 Hz ceiling.
+- NaN, infinities, zero, negative, and malformed speed inputs cannot create
+  an invalid timer or bypass the ceiling.
+- Repeated Play actions cannot create concurrent playback loops.
+- Pause, unmount, and relevant view changes cancel scheduled transitions.
+- Returning from a hidden tab does not replay a backlog of transitions.
+- Actual displayed epoch changes respect the timing limit.
+- Wheel-event bursts are accumulated/coalesced rather than producing
+  uncontrolled rapid image transitions.
+- Keyboard and wheel epoch changes clamp correctly with zero, one, two,
+  and many observations.
 
-4. **`contains all 5 NASA challenge benchmark targets`**
-   - **Verification:** Confirms Barnard's Star, Epsilon Indi B, WISE 0855, RW Aurigae, and R Draconis.
-   - **Result:** `PASSED`
+### Provenance and deep links
 
-5. **`retrieves synthetic observations across all 6 detector arrays`**
-   - **Verification:** Synthetic query yields 24 records spanning `Array1` through `Array6`.
-   - **Result:** `PASSED`
+- SourceBadge reflects displayed data, including pending/error states.
+- An archive error never changes source to synthetic.
+- Late responses from an earlier request cannot replace newer results.
+- Supported URL state round-trips without losing source or epoch.
+- Invalid coordinates, field of view, source, and epoch are handled visibly.
+- Epoch restoration waits for the relevant observation list.
+- Embed mode retains source, warning context, pause, and keyboard controls.
+- Backend CIDS fixtures remain consumable without client-side celestial math.
 
-6. **`calculates 5-degree active and prefetch tiles`**
-   - **Verification:** Validates tile ID generation and 5-degree bounding boxes.
-   - **Result:** `PASSED`
+### Accessible interaction
 
-7. **`retrieves 3D Time-Cube metadata`**
-   - **Verification:** Returns 3D datacube dimensions and slice metadata.
-   - **Result:** `PASSED`
+- Every input and icon-only control has an accessible name.
+- Search errors are associated with their fields.
+- Dialogs have titles, appropriate focus containment, Escape dismissal,
+  and focus restoration.
+- Epoch selection and essential metadata are usable without a canvas.
+- Reduced-motion settings suppress nonessential motion.
+- Loading and error states are exposed without announcing every playback
+  frame through a live region.
+- Static comparison controls do not start playback.
+
+## Manual release evidence
+
+Follow `accessibility-audit.md`. Automated accessibility scans supplement,
+but cannot replace, keyboard, screen-reader, contrast, reflow, and
+flashing-risk reviews.
+
+For each failure record:
+
+- Reproduction URL and source.
+- Commit and browser/assistive-technology versions.
+- Expected and observed behavior.
+- Relevant WCAG criterion.
+- Severity, owner, fix, and retest evidence.
+
+## Acceptance
+
+M7 is not complete until required regressions pass, applicable WCAG 2.2
+A/AA criteria have recorded outcomes, release-blocking defects are resolved,
+and the demo video and submission artifacts have been reviewed.

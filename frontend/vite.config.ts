@@ -4,6 +4,9 @@ import tailwindcss from "@tailwindcss/vite";
 
 export default defineConfig({
   plugins: [react(), tailwindcss()],
+  optimizeDeps: {
+    exclude: ["three", "@react-three/fiber", "@react-three/drei"],
+  },
   server: {
     port: 5173,
     proxy: {

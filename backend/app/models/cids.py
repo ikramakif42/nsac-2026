@@ -2,7 +2,7 @@ from pydantic import BaseModel, Field
 from typing import Optional, List, Literal, Tuple
 from enum import Enum
 
-DataSource = Literal["qr3", "synthetic", "mast", "vizier"]
+DataSource = Literal["qr3", "wiseview", "gaia", "synthetic", "mast", "vizier"]
 
 # Real SPHEREx Focal Plane: 6 Detector Arrays
 ArrayId = Literal["Array1", "Array2", "Array3", "Array4", "Array5", "Array6"]

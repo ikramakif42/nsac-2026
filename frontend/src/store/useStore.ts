@@ -1,5 +1,6 @@
 import { create } from "zustand";
 import { immer } from "zustand/middleware/immer";
+import { persist, createJSONStorage } from "zustand/middleware";
 import type {
   SearchQuery,
   SearchResult,
@@ -18,66 +19,59 @@ export type AppStatus =
   | "ready"
   | "error";
 
-export type ViewMode = "2d" | "3d_sphere" | "3d_cube";
+export type ViewMode = "sky_map" | "3d_cube" | "2d" | "3d_sphere";
 
-interface PlaybackState {
-  epochIndex: number;    // current frame index
-  isPlaying: boolean;   // always starts false
-  fps: number;           // default 0.5, max 3.0
+export const DEFAULT_FPS = 0.5;
+export const MIN_FPS = 0.1;
+export const MAX_FPS = 3;
+
+export interface PlaybackState {
+  epochIndex: number;
+  isPlaying: boolean;
+  fps: number;
 }
 
-interface DisplaySettings {
-  colormap: string;      // e.g. "viridis", "inferno"
+export interface DisplaySettings {
+  colormap: string;
   stretch: "linear" | "sqrt" | "log" | "asinh";
-  contrastLow: number;   // percentile 0-100
-  contrastHigh: number;  // percentile 0-100
+  contrastLow: number;
+  contrastHigh: number;
   showGrid: boolean;
-  showCatalog: boolean;  // Gaia overlay
+  showCatalog: boolean;
   cdsOverlay: CDSOverlay;
 }
 
-interface FOVState {
+export interface FOVState {
   centerRa: number;
   centerDec: number;
-  fovDeg: number;       // default 5.0 degrees
+  fovDeg: number;
   activeTile: TileChunk | null;
   prefetchTiles: TileChunk[];
 }
 
-interface AppState {
-  // Query
+export interface AppState {
   query: SearchQuery | null;
   result: SearchResult | null;
   status: AppStatus;
   errorMessage: string | null;
-
-  // Active record
   activeRecord: ObservationRecord | null;
   activeSource: DataSource;
   activeBand: Band | null;
-
-  // Playback & Temporal Wheel Scrubbing
   playback: PlaybackState;
-
-  // Progressive FOV & Tiling
   fov: FOVState;
-
-  // 3D Time-Cube Mode
   cubeAxis: CubeAxis;
-
-  // View
   viewMode: ViewMode;
   sedOpen: boolean;
   metaOpen: boolean;
   displaySettings: DisplaySettings;
 
-  // Actions
+  setActiveSource: (source: DataSource) => void;
   setQuery: (q: SearchQuery) => void;
   setResult: (r: SearchResult) => void;
   setStatus: (s: AppStatus, msg?: string) => void;
   setActiveRecord: (r: ObservationRecord | null) => void;
   setEpochIndex: (i: number) => void;
-  stepEpoch: (delta: number, maxFrames: number) => void; // Wheel scrub action
+  stepEpoch: (delta: number, maxFrames: number) => void;
   setPlaying: (p: boolean) => void;
   setFps: (fps: number) => void;
   setViewMode: (m: ViewMode) => void;
@@ -90,84 +84,183 @@ interface AppState {
   reset: () => void;
 }
 
-const DEFAULT_DISPLAY: DisplaySettings = {
-  colormap: "inferno",
-  stretch: "asinh",
-  contrastLow: 1,
-  contrastHigh: 99,
-  showGrid: false,
-  showCatalog: false,
-  cdsOverlay: "none",
-};
+function defaultDisplay(): DisplaySettings {
+  return {
+    colormap: "inferno",
+    stretch: "asinh",
+    contrastLow: 1,
+    contrastHigh: 99,
+    showGrid: false,
+    showCatalog: false,
+    cdsOverlay: "none",
+  };
+}
 
-const DEFAULT_PLAYBACK: PlaybackState = {
-  epochIndex: 0,
-  isPlaying: false, // CRITICAL: always starts paused
-  fps: 0.5,         // CRITICAL: 0.5 fps default
-};
+function defaultPlayback(): PlaybackState {
+  return {
+    epochIndex: 0,
+    isPlaying: false,
+    fps: DEFAULT_FPS,
+  };
+}
 
-const DEFAULT_FOV: FOVState = {
-  centerRa: 269.4521,
-  centerDec: 4.6934,
-  fovDeg: 5.0,
-  activeTile: null,
-  prefetchTiles: [],
-};
+function defaultFOV(): FOVState {
+  return {
+    centerRa: 269.4521,
+    centerDec: 4.6934,
+    fovDeg: 5,
+    activeTile: null,
+    prefetchTiles: [],
+  };
+}
+
+export function normalizeFps(value: number): number {
+  if (Number.isNaN(value)) return DEFAULT_FPS;
+  return Math.min(MAX_FPS, Math.max(MIN_FPS, value));
+}
+
+function normalizeIndex(value: number): number {
+  return Number.isFinite(value) ? Math.max(0, Math.trunc(value)) : 0;
+}
+
+export const CODE_BUILD_SIG = "orbit-lens-v1.6.0-default-synthetic";
+
+// Automatically wipe client-side storage whenever codebase build changes
+if (typeof window !== "undefined") {
+  try {
+    const storedSig = localStorage.getItem("orbit_lens_build_sig");
+    if (storedSig && storedSig !== CODE_BUILD_SIG) {
+      console.info("[Storage] Codebase updated. Auto-wiping client-side storage cache.");
+      localStorage.removeItem("orbit-lens-state");
+    }
+    localStorage.setItem("orbit_lens_build_sig", CODE_BUILD_SIG);
+  } catch {
+    // Ignore storage quota or access issues
+  }
+}
 
 export const useStore = create<AppState>()(
-  immer((set) => ({
+  persist(
+    immer((set) => ({
     query: null,
     result: null,
     status: "idle",
     errorMessage: null,
     activeRecord: null,
-    activeSource: "qr3",
+    activeSource: "synthetic",
     activeBand: null,
-    playback: DEFAULT_PLAYBACK,
-    fov: DEFAULT_FOV,
+    playback: defaultPlayback(),
+    fov: defaultFOV(),
     cubeAxis: "time",
-    viewMode: "2d",
+    viewMode: "sky_map",
     sedOpen: false,
     metaOpen: false,
-    displaySettings: DEFAULT_DISPLAY,
+    displaySettings: defaultDisplay(),
 
-    setQuery: (q) => set((s) => { s.query = q; }),
-    setResult: (r) => set((s) => { s.result = r; }),
+    setActiveSource: (source) =>
+      set((s) => {
+        if (s.activeSource !== source) s.playback.isPlaying = false;
+        s.activeSource = source;
+      }),
+
+    setQuery: (q) =>
+      set((s) => {
+        s.query = q;
+        s.playback.isPlaying = false;
+      }),
+
+    setResult: (r) =>
+      set((s) => {
+        s.result = r;
+      }),
+
     setStatus: (status, msg) =>
       set((s) => {
         s.status = status;
         s.errorMessage = msg ?? null;
+        if (status !== "ready") s.playback.isPlaying = false;
       }),
-    setActiveRecord: (r) => set((s) => { s.activeRecord = r; }),
+
+    setActiveRecord: (r) =>
+      set((s) => {
+        s.activeRecord = r;
+      }),
+
     setEpochIndex: (i) =>
       set((s) => {
-        s.playback.epochIndex = i;
+        s.playback.epochIndex = normalizeIndex(i);
       }),
+
     stepEpoch: (delta, maxFrames) =>
       set((s) => {
-        if (maxFrames <= 1) return;
-        const next = Math.max(0, Math.min(maxFrames - 1, s.playback.epochIndex + delta));
-        s.playback.epochIndex = next;
+        if (!Number.isFinite(maxFrames) || maxFrames <= 0) {
+          s.playback.epochIndex = 0;
+          s.playback.isPlaying = false;
+          return;
+        }
+
+        const count = Math.floor(maxFrames);
+        if (count <= 1) {
+          s.playback.epochIndex = 0;
+          s.playback.isPlaying = false;
+          return;
+        }
+
+        const step = Number.isFinite(delta) ? Math.trunc(delta) : 0;
+        s.playback.epochIndex = Math.max(
+          0,
+          Math.min(count - 1, s.playback.epochIndex + step),
+        );
       }),
-    setPlaying: (p) =>
+
+    setPlaying: (playing) =>
       set((s) => {
-        s.playback.isPlaying = p;
+        s.playback.fps = normalizeFps(s.playback.fps);
+        s.playback.isPlaying = playing;
       }),
+
     setFps: (fps) =>
       set((s) => {
-        // CRITICAL: strict 3.0 Hz upper limit
-        s.playback.fps = Math.min(3.0, Math.max(0.1, fps));
+        s.playback.fps = normalizeFps(fps);
       }),
-    setViewMode: (m) => set((s) => { s.viewMode = m; }),
-    setCubeAxis: (axis) => set((s) => { s.cubeAxis = axis; }),
-    setCDSOverlay: (overlay) => set((s) => { s.displaySettings.cdsOverlay = overlay; }),
-    setFOV: (patch) => set((s) => { Object.assign(s.fov, patch); }),
-    toggleSED: () => set((s) => { s.sedOpen = !s.sedOpen; }),
-    toggleMeta: () => set((s) => { s.metaOpen = !s.metaOpen; }),
+
+    setViewMode: (mode) =>
+      set((s) => {
+        if (s.viewMode !== mode) s.playback.isPlaying = false;
+        s.viewMode = mode;
+      }),
+
+    setCubeAxis: (axis) =>
+      set((s) => {
+        if (s.cubeAxis !== axis) s.playback.isPlaying = false;
+        s.cubeAxis = axis;
+      }),
+
+    setCDSOverlay: (overlay) =>
+      set((s) => {
+        s.displaySettings.cdsOverlay = overlay;
+      }),
+
+    setFOV: (patch) =>
+      set((s) => {
+        Object.assign(s.fov, patch);
+      }),
+
+    toggleSED: () =>
+      set((s) => {
+        s.sedOpen = !s.sedOpen;
+      }),
+
+    toggleMeta: () =>
+      set((s) => {
+        s.metaOpen = !s.metaOpen;
+      }),
+
     updateDisplay: (patch) =>
       set((s) => {
         Object.assign(s.displaySettings, patch);
       }),
+
     reset: () =>
       set((s) => {
         s.query = null;
@@ -175,10 +268,31 @@ export const useStore = create<AppState>()(
         s.status = "idle";
         s.errorMessage = null;
         s.activeRecord = null;
+        s.activeSource = "synthetic";
         s.activeBand = null;
-        s.playback = { ...DEFAULT_PLAYBACK };
-        s.fov = { ...DEFAULT_FOV };
+        s.playback = defaultPlayback();
+        s.fov = defaultFOV();
         s.cubeAxis = "time";
+        s.viewMode = "2d";
+        s.sedOpen = false;
+        s.metaOpen = false;
+        s.displaySettings = defaultDisplay();
       }),
-  }))
+  })),
+  {
+    name: "orbit-lens-state",
+    storage: createJSONStorage(() => localStorage),
+    partialize: (state) => ({
+      activeSource: state.activeSource,
+      fov: state.fov,
+      viewMode: state.viewMode,
+      displaySettings: state.displaySettings,
+      playback: {
+        epochIndex: state.playback.epochIndex,
+        isPlaying: false,
+        fps: state.playback.fps,
+      },
+    }),
+  }
+)
 );

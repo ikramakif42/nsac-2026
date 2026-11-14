@@ -1,6 +1,6 @@
-import { useEffect, useCallback } from "react";
-import { useSearchParams } from "react-router-dom";
-import { Info, ExternalLink } from "lucide-react";
+import { useCallback, useEffect, useRef } from "react";
+import { useLocation, useSearchParams } from "react-router-dom";
+import { ExternalLink, Info } from "lucide-react";
 import TopBar from "../components/TopBar/TopBar";
 import ViewportTabs from "../components/SkyViewer/ViewportTabs";
 import TimelineControls from "../components/Timeline/TimelineControls";
@@ -9,193 +9,235 @@ import MetadataPanel from "../components/MetadataPanel/MetadataPanel";
 import StatusNotice from "../components/StatusNotice";
 import { useStore } from "../store/useStore";
 import { getConnector } from "../connectors";
-import type { SearchQuery, DataSource } from "../types/cids";
+import {
+  assertObservationSourceAvailable,
+  boundEpoch,
+  parseExploreLocation,
+  SOURCE_LABELS,
+  validateSearchQuery,
+  writeExploreLocation,
+} from "../lib/exploreState";
+import type { DataSource, SearchQuery } from "../types/cids";
 
-export default function Explore() {
-  const [searchParams, setSearchParams] = useSearchParams();
+interface Props {
+  defaultSource?: DataSource;
+}
 
-  const {
-    result,
-    status,
-    errorMessage,
-    activeSource,
-    playback,
-    fov,
-    metaOpen,
-    setQuery,
-    setResult,
-    setStatus,
-    setActiveRecord,
-    setEpochIndex,
-    toggleMeta,
-    setFOV,
-  } = useStore((s) => ({
-    result:          s.result,
-    status:          s.status,
-    errorMessage:    s.errorMessage,
-    activeSource:    s.activeSource,
-    playback:        s.playback,
-    fov:             s.fov,
-    metaOpen:        s.metaOpen,
-    setQuery:        s.setQuery,
-    setResult:       s.setResult,
-    setStatus:       s.setStatus,
-    setActiveRecord: s.setActiveRecord,
-    setEpochIndex:   s.setEpochIndex,
-    toggleMeta:      s.toggleMeta,
-    setFOV:          s.setFOV,
-  }));
+export default function Explore({ defaultSource }: Props = {}) {
+  const location = useLocation();
+  const [params, setParams] = useSearchParams();
+  const requestId = useRef(0);
+  const alive = useRef(true);
+  const paramsRef = useRef(params);
+  const lastAppliedLocation = useRef<string | null>(null);
+  paramsRef.current = params;
 
-  const records = result?.records ?? [];
-  const isEmbed = searchParams.get("embed") === "true";
+  const result = useStore((s) => s.result);
+  const status = useStore((s) => s.status);
+  const errorMessage = useStore((s) => s.errorMessage);
+  const activeSource = useStore((s) => s.activeSource);
+  const epochIndex = useStore((s) => s.playback.epochIndex);
+  const fov = useStore((s) => s.fov);
+  const metaOpen = useStore((s) => s.metaOpen);
+  const isEmbed = params.get("embed") === "true";
 
-  const handleSearch = useCallback(
-    async (q: SearchQuery) => {
-      const sourceToUse = q.source || activeSource || "synthetic";
-      setQuery(q);
-      setStatus("searching");
+  const records =
+    status === "ready" && result?.source_used === activeSource
+      ? result.records
+      : [];
 
-      // Bi-directional URL synchronization
-      setSearchParams(
-        (prev) => {
-          const next = new URLSearchParams(prev);
-          next.set("ra", q.ra.toFixed(4));
-          next.set("dec", q.dec.toFixed(4));
-          if (q.radius_arcsec) {
-            next.set("fov", ((q.radius_arcsec * 2) / 3600).toFixed(1));
-          }
-          next.set("source", sourceToUse);
-          return next;
-        },
-        { replace: true }
-      );
-
-      setFOV({
-        centerRa: q.ra,
-        centerDec: q.dec,
-        fovDeg: q.radius_arcsec ? (q.radius_arcsec * 2) / 3600 : 5.0,
-      });
-
-      try {
-        const connector = getConnector(sourceToUse);
-        const res = await connector.search(q);
-        setResult(res);
-        setActiveRecord(res.records[0] ?? null);
-        setStatus("ready");
-      } catch (err) {
-        const msg = err instanceof Error ? err.message : String(err);
-        setStatus("error", msg);
-      }
-    },
-    [activeSource, setQuery, setStatus, setSearchParams, setFOV, setResult, setActiveRecord]
-  );
-
-  // Sync epoch index changes to URL
   useEffect(() => {
-    if (records.length > 0) {
-      setSearchParams(
-        (prev) => {
-          const next = new URLSearchParams(prev);
-          next.set("epoch", String(playback.epochIndex));
-          return next;
-        },
-        { replace: true }
-      );
-    }
-  }, [playback.epochIndex, records.length, setSearchParams]);
-
-  // Deep-link: on mount, parse URL params or load default target
-  useEffect(() => {
-    const raParam = searchParams.get("ra");
-    const decParam = searchParams.get("dec");
-    const fovParam = searchParams.get("fov");
-    const sourceParam = (searchParams.get("source") as DataSource) || "synthetic";
-    const epochParam = searchParams.get("epoch");
-
-    const ra = raParam ? parseFloat(raParam) : 269.4521; // Default to Barnard's Star
-    const dec = decParam ? parseFloat(decParam) : 4.6934;
-    const fovDeg = fovParam ? parseFloat(fovParam) : 5.0;
-
-    handleSearch({
-      ra,
-      dec,
-      radius_arcsec: (fovDeg * 3600) / 2,
-      source: sourceParam,
-    });
-
-    if (epochParam) {
-      const ep = parseInt(epochParam, 10);
-      if (!isNaN(ep)) setEpochIndex(ep);
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    alive.current = true;
+    useStore.getState().setPlaying(false);
+    return () => {
+      alive.current = false;
+      requestId.current += 1;
+      useStore.getState().setPlaying(false);
+    };
   }, []);
 
+  const runSearch = useCallback(async (
+    input: SearchQuery,
+    requestedEpoch: number,
+  ) => {
+    const ticket = ++requestId.current;
+    const store = useStore.getState();
+    store.setPlaying(false);
+    store.setActiveRecord(null);
+    store.setEpochIndex(0);
+
+    try {
+      const query = validateSearchQuery(input, store.activeSource);
+      const source = query.source!;
+      store.setActiveSource(source);
+      store.setQuery(query);
+      store.setFOV({
+        centerRa: query.ra,
+        centerDec: query.dec,
+        fovDeg: query.radius_arcsec! / 1800,
+        activeTile: null,
+        prefetchTiles: [],
+      });
+      store.setStatus("searching");
+      assertObservationSourceAvailable(source);
+
+      const response = await getConnector(source).search(query);
+      if (!alive.current || ticket !== requestId.current) return;
+
+      if (
+        response.source_used !== source ||
+        response.records.some((record) => record.source !== source)
+      ) {
+        throw new Error(
+          "The connector returned a different source. No substitute data was accepted.",
+        );
+      }
+
+      const index = boundEpoch(requestedEpoch, response.records.length);
+      const current = useStore.getState();
+      current.setResult(response);
+      current.setEpochIndex(index);
+      current.setActiveRecord(response.records[index] ?? null);
+      current.setStatus("ready");
+    } catch (error) {
+      if (!alive.current || ticket !== requestId.current) return;
+      useStore.getState().setStatus(
+        "error",
+        error instanceof Error ? error.message : String(error),
+      );
+    }
+  }, []);
+
+  const handleSearch = useCallback((input: SearchQuery) => {
+    try {
+      const query = validateSearchQuery(
+        input,
+        useStore.getState().activeSource,
+      );
+      const next = writeExploreLocation(paramsRef.current, query, 0);
+      lastAppliedLocation.current = next.toString();
+      setParams(next, { replace: true });
+      void runSearch(query, 0);
+    } catch (error) {
+      requestId.current += 1;
+      useStore.getState().setActiveRecord(null);
+      useStore.getState().setStatus(
+        "error",
+        error instanceof Error ? error.message : String(error),
+      );
+    }
+  }, [runSearch, setParams]);
+
+  useEffect(() => {
+    const key = params.toString();
+    if (lastAppliedLocation.current === key) return;
+    lastAppliedLocation.current = key;
+
+    try {
+      const fallback =
+        location.pathname.startsWith("/demo")
+          ? "synthetic"
+          : defaultSource ?? "qr3";
+      const parsed = parseExploreLocation(params, fallback);
+      void runSearch(parsed.query, parsed.epoch);
+    } catch (error) {
+      requestId.current += 1;
+      useStore.getState().setActiveRecord(null);
+      useStore.getState().setStatus(
+        "error",
+        error instanceof Error ? error.message : String(error),
+      );
+    }
+  }, [params, location.pathname, defaultSource, runSearch]);
+
+  useEffect(() => {
+    if (status !== "ready" || !result || result.source_used !== activeSource) {
+      return;
+    }
+    const index = boundEpoch(epochIndex, result.records.length);
+    const store = useStore.getState();
+    if (index !== epochIndex) store.setEpochIndex(index);
+    store.setActiveRecord(result.records[index] ?? null);
+
+    const next = writeExploreLocation(
+      paramsRef.current,
+      { ...result.query, source: result.source_used },
+      index,
+    );
+    if (next.toString() !== paramsRef.current.toString()) {
+      lastAppliedLocation.current = next.toString();
+      setParams(next, { replace: true });
+    }
+  }, [epochIndex, result, status, activeSource, setParams]);
+
+  const appParams = new URLSearchParams(params);
+  appParams.delete("embed");
+  const appHref = `${location.pathname}?${appParams.toString()}`;
+
   return (
-    <div className="flex flex-col h-screen overflow-hidden bg-[var(--ol-bg)]">
-      {/* Top bar (hidden in iframe embed mode) */}
+    <div className="flex h-screen flex-col overflow-hidden bg-[var(--ol-bg)]">
       {!isEmbed && <TopBar onSearch={handleSearch} showSearchBar />}
 
-      {/* Embed header pill */}
-      {isEmbed && (
-        <div className="flex items-center justify-between px-3 py-1.5 bg-[var(--ol-surface)] border-b border-[var(--ol-border)] text-xs font-mono">
-          <div className="flex items-center gap-2">
-            <span className="font-bold text-[var(--ol-accent)]">ORBIT-LENS</span>
-            <span className="text-[var(--ol-muted)]">
-              RA: {fov.centerRa.toFixed(4)}° Dec: {fov.centerDec.toFixed(4)}°
-            </span>
-          </div>
+      <header className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-700 bg-slate-950 px-3 py-2 text-xs text-slate-100">
+        <div className="flex flex-wrap items-center gap-3">
+          {isEmbed && <strong>ORBIT-LENS</strong>}
+          <span
+            data-testid="source-badge"
+            aria-label={`Active source: ${SOURCE_LABELS[activeSource]}`}
+            className="font-semibold text-cyan-300"
+          >
+            {SOURCE_LABELS[activeSource]}
+          </span>
+          <span>
+            RA {fov.centerRa}° · Dec {fov.centerDec}° · {fov.fovDeg}° FOV
+          </span>
+        </div>
+        {isEmbed && (
           <a
-            href={window.location.href.replace("&embed=true", "").replace("embed=true", "")}
+            href={appHref}
             target="_blank"
             rel="noopener noreferrer"
-            className="flex items-center gap-1 text-[var(--ol-accent)] hover:underline"
+            className="flex items-center gap-1 text-cyan-300 underline"
           >
-            <span>Open in App</span>
-            <ExternalLink size={12} />
+            Open in app <ExternalLink size={12} />
           </a>
-        </div>
-      )}
+        )}
+      </header>
 
-      {/* Status notice (idle / searching / error / empty) */}
       <StatusNotice
         status={status}
         errorMessage={errorMessage}
         hasResults={records.length > 0}
-        onSwitchToSynthetic={() => {
-          handleSearch({
-            ra: fov.centerRa,
-            dec: fov.centerDec,
-            radius_arcsec: (fov.fovDeg * 3600) / 2,
-            source: "synthetic",
-          });
-        }}
+        onSwitchToSynthetic={() => handleSearch({
+          ra: fov.centerRa,
+          dec: fov.centerDec,
+          radius_arcsec: fov.fovDeg * 1800,
+          source: "synthetic",
+        })}
       />
 
-      {/* Main content area */}
-      <div className="flex flex-1 min-h-0">
-        {/* Viewer + timeline + SED */}
-        <div className="flex flex-col flex-1 min-w-0">
-          {/* Viewport */}
-          <div className="flex-1 min-h-0">
-            <ViewportTabs records={records} />
+      {status === "ready" && result?.warning && (
+        <p role="status" className="border-b border-amber-800 bg-slate-950 px-3 py-2 text-sm text-amber-200">
+          {result.warning}
+        </p>
+      )}
+
+      <main className="flex min-h-0 flex-1">
+        <div className="flex min-w-0 flex-1 flex-col">
+          <div className="min-h-0 flex-1">
+            <ViewportTabs records={records} onSearch={handleSearch} />
           </div>
-
-          {/* Timeline */}
           <TimelineControls totalFrames={records.length} />
-
-          {/* SED drawer (hidden in compact embed unless expanded) */}
           <SEDDrawer />
         </div>
-
-        {/* Metadata panel */}
         {!isEmbed && <MetadataPanel />}
-      </div>
+      </main>
 
-      {/* Meta toggle button */}
       {!isEmbed && (
         <button
-          onClick={toggleMeta}
-          className="fixed bottom-4 right-4 p-2 rounded-full bg-[var(--ol-surface)] border border-[var(--ol-border)] text-[var(--ol-muted)] hover:text-[var(--ol-accent)] transition-colors shadow-lg z-30"
+          type="button"
+          onClick={() => useStore.getState().toggleMeta()}
+          className="fixed bottom-12 right-4 z-30 rounded border border-slate-600 bg-slate-950 p-2 text-slate-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-cyan-300"
           aria-label={metaOpen ? "Close metadata inspector" : "Open metadata inspector"}
           aria-pressed={metaOpen}
         >
@@ -203,10 +245,9 @@ export default function Explore() {
         </button>
       )}
 
-      {/* Footer disclaimer (compact in embed) */}
-      <div className="text-center py-1 text-[11px] text-[var(--ol-muted)]/60 bg-[var(--ol-surface)] border-t border-[var(--ol-border)]/50">
-        ORBIT-LENS · Independent project by Team Schwarzschildren · Not affiliated with NASA
-      </div>
+      <footer className="border-t border-slate-700 bg-slate-950 py-1 text-center text-xs text-slate-300">
+        ORBIT-LENS · Team Schwarzschildren · Not affiliated with NASA
+      </footer>
     </div>
   );
 }

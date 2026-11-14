@@ -1,132 +1,148 @@
-import { useState } from "react";
-import { Search } from "lucide-react";
-import { BENCHMARK_TARGETS } from "../../types/cids";
+import { useEffect, useState } from "react";
+import type { FormEvent } from "react";
 import { useStore } from "../../store/useStore";
-import type { SearchQuery, DataSource } from "../../types/cids";
+import { BENCHMARK_TARGETS } from "../../types/cids";
+import type { DataSource, SearchQuery } from "../../types/cids";
+import {
+  SOURCE_LABELS,
+  validateSearchQuery,
+} from "../../lib/exploreState";
 
 interface Props {
-  onSearch: (q: SearchQuery) => void;
+  onSearch: (query: SearchQuery) => void;
 }
 
-const FOV_OPTIONS = [0.1, 0.5, 1.0, 2.5, 5.0, 10.0];
+const SOURCES: DataSource[] = [
+  "qr3", "synthetic", "mast", "vizier", "wiseview", "gaia",
+];
 
 export default function CoordinateForm({ onSearch }: Props) {
-  const { status, activeSource, fov } = useStore((s) => ({
-    status:       s.status,
-    activeSource: s.activeSource,
-    fov:          s.fov,
-  }));
+  const status = useStore((s) => s.status);
+  const activeSource = useStore((s) => s.activeSource);
+  const centerRa = useStore((s) => s.fov.centerRa);
+  const centerDec = useStore((s) => s.fov.centerDec);
+  const storeFov = useStore((s) => s.fov.fovDeg);
 
-  const [ra, setRa] = useState(String(fov.centerRa));
-  const [dec, setDec] = useState(String(fov.centerDec));
+  const [ra, setRa] = useState(String(centerRa));
+  const [dec, setDec] = useState(String(centerDec));
+  const [fov, setFov] = useState(String(storeFov));
   const [source, setSource] = useState<DataSource>(activeSource);
-  const [fovDeg, setFovDeg] = useState(fov.fovDeg);
+  const [error, setError] = useState<string | null>(null);
 
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    const raNum = parseFloat(ra);
-    const decNum = parseFloat(dec);
-    if (isNaN(raNum) || isNaN(decNum)) return;
-    onSearch({
-      ra: raNum,
-      dec: decNum,
-      radius_arcsec: fovDeg * 3600 / 2,
-      source,
-    });
+  useEffect(() => { setRa(String(centerRa)); }, [centerRa]);
+  useEffect(() => { setDec(String(centerDec)); }, [centerDec]);
+  useEffect(() => { setFov(String(storeFov)); }, [storeFov]);
+  useEffect(() => { setSource(activeSource); }, [activeSource]);
+
+  const submit = (target?: { ra: number; dec: number }) => {
+    try {
+      if (!target && (ra.trim() === "" || dec.trim() === "")) {
+        throw new Error("Enter both RA and declination.");
+      }
+      if (fov.trim() === "") throw new Error("Enter a field of view.");
+      const query = validateSearchQuery({
+        ra: target?.ra ?? Number(ra),
+        dec: target?.dec ?? Number(dec),
+        radius_arcsec: Number(fov) * 1800,
+        source,
+      });
+      setError(null);
+      onSearch(query);
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : String(reason));
+    }
   };
 
-  const loadBenchmark = (idx: number) => {
-    const t = BENCHMARK_TARGETS[idx];
-    setRa(String(t.ra));
-    setDec(String(t.dec));
-    onSearch({
-      ra: t.ra,
-      dec: t.dec,
-      radius_arcsec: fovDeg * 3600 / 2,
-      source,
-    });
+  const onSubmit = (event: FormEvent) => {
+    event.preventDefault();
+    submit();
   };
+
+  const inputClass =
+    "w-24 rounded border border-slate-600 bg-slate-950 px-2 py-1 text-slate-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-cyan-300";
 
   return (
-    <form onSubmit={handleSubmit} className="flex items-center gap-2 flex-wrap">
-      {/* RA Input */}
-      <label className="sr-only" htmlFor="ra-input">Right Ascension (degrees)</label>
-      <input
-        id="ra-input"
-        type="number"
-        step="any"
-        placeholder="RA (°)"
-        value={ra}
-        onChange={(e) => setRa(e.target.value)}
-        className="w-24 bg-[var(--ol-surface2)] border border-[var(--ol-border)] rounded px-2 py-1 text-xs font-mono text-[var(--ol-text)] placeholder:text-[var(--ol-muted)]"
-        required
-      />
-
-      {/* Dec Input */}
-      <label className="sr-only" htmlFor="dec-input">Declination (degrees)</label>
-      <input
-        id="dec-input"
-        type="number"
-        step="any"
-        placeholder="Dec (°)"
-        value={dec}
-        onChange={(e) => setDec(e.target.value)}
-        className="w-24 bg-[var(--ol-surface2)] border border-[var(--ol-border)] rounded px-2 py-1 text-xs font-mono text-[var(--ol-text)] placeholder:text-[var(--ol-muted)]"
-        required
-      />
-
-      {/* FOV Selector */}
-      <label className="sr-only" htmlFor="fov-select">Field of view</label>
-      <select
-        id="fov-select"
-        value={fovDeg}
-        onChange={(e) => setFovDeg(parseFloat(e.target.value))}
-        className="bg-[var(--ol-surface2)] border border-[var(--ol-border)] rounded px-1.5 py-1 text-xs font-mono text-[var(--ol-text)]"
-        title="Field of View (degrees)"
-      >
-        {FOV_OPTIONS.map((f) => (
-          <option key={f} value={f}>{f}° FOV</option>
-        ))}
-      </select>
-
-      {/* Data Source Selector */}
-      <label className="sr-only" htmlFor="source-select">Data source</label>
-      <select
-        id="source-select"
-        value={source}
-        onChange={(e) => setSource(e.target.value as DataSource)}
-        className="bg-[var(--ol-surface2)] border border-[var(--ol-border)] rounded px-1.5 py-1 text-xs font-mono text-[var(--ol-text)]"
-        title="Data Source"
-      >
-        <option value="synthetic">Synthetic (6 Arrays)</option>
-        <option value="qr3">SPHEREx QR3 (IRSA)</option>
-      </select>
-
+    <form onSubmit={onSubmit} className="flex flex-wrap items-end gap-2 text-xs">
+      <label className="flex flex-col gap-1">
+        RA (degrees)
+        <input
+          type="number"
+          step="any"
+          min={0}
+          max={360}
+          required
+          value={ra}
+          onChange={(e) => setRa(e.target.value)}
+          className={inputClass}
+        />
+      </label>
+      <label className="flex flex-col gap-1">
+        Dec (degrees)
+        <input
+          type="number"
+          step="any"
+          min={-90}
+          max={90}
+          required
+          value={dec}
+          onChange={(e) => setDec(e.target.value)}
+          className={inputClass}
+        />
+      </label>
+      <label className="flex flex-col gap-1">
+        FOV diameter (degrees)
+        <input
+          type="number"
+          step="any"
+          min={1 / 1800}
+          max={10}
+          required
+          value={fov}
+          onChange={(e) => setFov(e.target.value)}
+          className={inputClass}
+        />
+      </label>
+      <label className="flex flex-col gap-1">
+        Source
+        <select
+          value={source}
+          onChange={(e) => setSource(e.target.value as DataSource)}
+          className="rounded border border-slate-600 bg-slate-950 px-2 py-1 text-slate-100"
+        >
+          {SOURCES.map((item) => (
+            <option key={item} value={item}>
+              {SOURCE_LABELS[item]}
+              {item === "gaia" || item === "wiseview" ? " — overlay only" : ""}
+            </option>
+          ))}
+        </select>
+      </label>
       <button
         type="submit"
         disabled={status === "searching"}
-        className="flex items-center gap-1 px-3 py-1 rounded bg-[var(--ol-accent)] text-[var(--ol-bg)] text-xs font-semibold disabled:opacity-50 hover:opacity-90 transition-opacity"
-        aria-label="Search sky coordinates"
+        className="rounded border border-cyan-300 px-3 py-1 text-cyan-200 disabled:opacity-50"
       >
-        <Search size={13} />
         {status === "searching" ? "Searching…" : "Search"}
       </button>
-
-      {/* Benchmark presets */}
-      <div className="flex gap-1 flex-wrap items-center ml-1">
-        <span className="text-[10px] uppercase text-[var(--ol-muted)] font-mono">Targets:</span>
-        {BENCHMARK_TARGETS.map((t, i) => (
-          <button
-            key={t.label}
-            type="button"
-            onClick={() => loadBenchmark(i)}
-            className="px-2 py-0.5 text-[11px] rounded border border-[var(--ol-border)] text-[var(--ol-muted)] hover:border-[var(--ol-accent)] hover:text-[var(--ol-accent)] transition-colors"
-            title={`${t.label} — ${t.description}`}
-          >
-            {t.label}
-          </button>
-        ))}
-      </div>
+      <details className="relative">
+        <summary className="cursor-pointer rounded border border-slate-600 px-2 py-1">
+          Targets
+        </summary>
+        <div className="absolute right-0 top-full z-50 mt-1 flex w-56 flex-col gap-1 rounded border border-slate-600 bg-slate-950 p-2">
+          {BENCHMARK_TARGETS.map((target) => (
+            <button
+              key={target.label}
+              type="button"
+              title={target.description}
+              onClick={() => submit(target)}
+              className="rounded px-2 py-2 text-left text-slate-100 hover:bg-slate-800"
+            >
+              {target.label}
+            </button>
+          ))}
+        </div>
+      </details>
+      {error && <p role="alert" className="w-full text-red-300">{error}</p>}
     </form>
   );
 }

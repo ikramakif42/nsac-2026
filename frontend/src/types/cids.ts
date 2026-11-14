@@ -1,7 +1,7 @@
 // CIDS — Cross-modal Interoperability Data Schema
 // Single contract between frontend and backend
 
-export type DataSource = "qr3" | "synthetic" | "mast" | "vizier";
+export type DataSource = "qr3" | "wiseview" | "gaia" | "synthetic" | "mast" | "vizier";
 
 // Real SPHEREx Focal Plane: 6 Detector Arrays
 export type ArrayId = "Array1" | "Array2" | "Array3" | "Array4" | "Array5" | "Array6";

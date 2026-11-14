@@ -72,9 +72,11 @@ describe("M8 URL and source invariants", () => {
     expect(boundEpoch(Number.NaN, 5)).toBe(0);
   });
 
-  it("rejects fabricated observation connectors instead of relabeling them", () => {
-    expect(() => assertObservationSourceAvailable("wiseview")).toThrow();
-    expect(() => assertObservationSourceAvailable("gaia")).toThrow();
+  it("rejects unsupported observation connectors", () => {
+    expect(() => assertObservationSourceAvailable("mast")).toThrow();
+    expect(() => assertObservationSourceAvailable("vizier")).toThrow();
+    expect(() => assertObservationSourceAvailable("wiseview")).not.toThrow();
+    expect(() => assertObservationSourceAvailable("gaia")).not.toThrow();
     expect(() => assertObservationSourceAvailable("qr3")).not.toThrow();
     expect(() => assertObservationSourceAvailable("synthetic")).not.toThrow();
   });

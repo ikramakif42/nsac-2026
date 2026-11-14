@@ -107,12 +107,10 @@ export function boundEpoch(epoch: number, count: number): number {
 }
 
 export function assertObservationSourceAvailable(source: DataSource): void {
-  if (source === "gaia" || source === "wiseview") {
+  if (source === "mast" || source === "vizier") {
     throw new Error(
-      `${SOURCE_LABELS[source]} observation playback is disabled: the supplied ` +
-      "connector generates unverified observations rather than retrieving measured " +
-      "archive products. Use its catalog/HiPS overlay separately, or explicitly " +
-      "select SYNTHETIC.",
+      `${SOURCE_LABELS[source]} observation playback is disabled: direct telescope ` +
+      "cutouts are only available for SPHEREx QR3, WiseView, Gaia DR3, and Synthetic.",
     );
   }
 }

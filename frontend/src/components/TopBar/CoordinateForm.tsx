@@ -112,7 +112,6 @@ export default function CoordinateForm({ onSearch }: Props) {
           {SOURCES.map((item) => (
             <option key={item} value={item}>
               {SOURCE_LABELS[item]}
-              {item === "gaia" || item === "wiseview" ? " — overlay only" : ""}
             </option>
           ))}
         </select>

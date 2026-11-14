@@ -12,7 +12,7 @@ import type {
 } from "../types/cids";
 import { registerConnector } from "./index";
 
-const BASE = import.meta.env.VITE_API_URL ?? "http://localhost:8000";
+const BASE = (import.meta.env.VITE_API_URL ?? "/api").replace(/\/$/, "");
 
 async function apiFetch<T>(path: string, options?: RequestInit): Promise<T> {
   const res = await fetch(`${BASE}${path}`, options);

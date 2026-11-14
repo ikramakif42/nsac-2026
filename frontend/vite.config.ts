@@ -10,6 +10,7 @@ export default defineConfig({
   server: {
     port: 5173,
     proxy: {
+      "/api":      { target: "http://localhost:8000", changeOrigin: true },
       "/search":   { target: "http://localhost:8000", changeOrigin: true },
       "/cutout":   { target: "http://localhost:8000", changeOrigin: true },
       "/spectrum": { target: "http://localhost:8000", changeOrigin: true },
@@ -17,6 +18,7 @@ export default defineConfig({
       "/compare":  { target: "http://localhost:8000", changeOrigin: true },
       "/tiles":    { target: "http://localhost:8000", changeOrigin: true },
       "/cube":     { target: "http://localhost:8000", changeOrigin: true },
+      "/cds":      { target: "http://localhost:8000", changeOrigin: true },
     },
   },
   build: {
